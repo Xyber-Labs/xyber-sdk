@@ -1,5 +1,4 @@
 from xyber_sdk.guardrails.guard_nodes import (
-    BaseGraphState,
     CallableNode,
     GuardInjector,
     GuardrailsNode,
@@ -16,7 +15,6 @@ __all__ = [
     "ValidationResponse",
     "GuardrailsNode",
     "GuardInjector",
-    "BaseGraphState",
     "CallableNode",
     "Supervisor",
     "SnapshotCreationError",

@@ -25,6 +25,8 @@ class SupportedModels(Enum):
     # Google models
     GEMINI_2_0_FLASH = ("gemini-2.0-flash", ChatGoogleGenerativeAI)
     GEMINI_2_5_PRO = ("gemini-2.5-pro", ChatGoogleGenerativeAI)
+    GEMINI_3_FLASH = ("gemini-3-flash-preview", ChatGoogleGenerativeAI)
+    GEMINI_3_PRO = ("gemini-3-pro-preview", ChatGoogleGenerativeAI)
 
     def __init__(
         self,
@@ -40,6 +42,8 @@ class SupportedGoogleModels(Enum):
 
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
     GEMINI_2_5_PRO = "gemini-2.5-pro"
+    GEMINI_3_FLASH = "gemini-3-flash-preview"
+    GEMINI_3_PRO = "gemini-3-pro-preview"
 
     def __init__(self, model_name: str):
         self.model_name = model_name

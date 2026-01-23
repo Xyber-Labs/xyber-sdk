@@ -1,24 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel
+from langgraph.typing import StateT
 
 from guardrails import AsyncGuard
 from guardrails.errors import ValidationError
-
-
-class BaseGraphState(BaseModel):
-    """Base state class for LangGraph graphs. Override this to add custom fields."""
-
-    pass
 
 
 class CallableNode(ABC):
     """Abstract base class for callable graph nodes."""
 
     @abstractmethod
-    async def __call__(self, state: BaseGraphState) -> dict: ...
+    async def __call__(self, state: StateT) -> dict: ...
 
 
 class GuardrailsNode(CallableNode):
@@ -33,8 +26,12 @@ class GuardrailsNode(CallableNode):
         self.guard = guard
         self.messages_key = messages_key
 
-    async def __call__(self, state: Any) -> dict:
-        messages = getattr(state, self.messages_key, [])
+    async def __call__(self, state: StateT) -> dict:
+        # Support both dict-like (TypedDict) and attribute access (BaseModel/dataclass)
+        if isinstance(state, dict):
+            messages = state.get(self.messages_key, [])
+        else:
+            messages = getattr(state, self.messages_key, [])
         if not messages:
             return {}
 
