@@ -13,5 +13,5 @@ Shared Python utilities for building LLM agents with LangGraph.
 ## Installation
 
 ```bash
-uv pip install xyber-sdk
+uv pip install git+https://github.com/Xyber-Labs/xyber-sdk.git
 ```
