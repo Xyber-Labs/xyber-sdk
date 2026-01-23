@@ -42,6 +42,7 @@ htmlcov/
 # Environment
 .env
 .env.local
+.env.test
 
 # uv
 uv.lock
