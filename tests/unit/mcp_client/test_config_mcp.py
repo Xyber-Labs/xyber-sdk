@@ -138,3 +138,91 @@ def test_bad_delimiter_is_ignored(clean_env):
 
         # Should not parse - wrong delimiter format
         assert config.servers == {}
+
+
+# --- JSON Format Tests ---
+
+
+def test_json_format_parsing(clean_env):
+    """McpClientConfig parses servers from MCP_SERVERS JSON string."""
+    json_config = '{"web_search": {"url": "http://localhost:8080/sse", "transport": "sse"}, "database": {"url": "http://localhost:9000/mcp"}}'
+    env_vars = {"MCP_SERVERS": json_config}
+
+    with patch.dict(os.environ, env_vars, clear=True):
+        config = McpClientConfig(_env_file=None)
+
+        assert len(config.servers) == 2
+
+        assert "web_search" in config.servers
+        assert config.servers["web_search"].url == "http://localhost:8080/sse"
+        assert config.servers["web_search"].transport == "sse"
+
+        assert "database" in config.servers
+        assert config.servers["database"].url == "http://localhost:9000/mcp"
+        assert config.servers["database"].transport == "streamable_http"  # default
+
+
+def test_json_format_with_headers(clean_env):
+    """McpClientConfig parses headers from MCP_SERVERS JSON string."""
+    json_config = """{
+        "apify": {
+            "url": "https://mcp.apify.com/sse",
+            "transport": "sse",
+            "headers": {"Authorization": "Bearer test-token"}
+        },
+        "tavily": {
+            "url": "https://tavily.com/mcp",
+            "headers": {"X-API-Key": "tavily-key", "X-Custom": "value"}
+        }
+    }"""
+    env_vars = {"MCP_SERVERS": json_config}
+
+    with patch.dict(os.environ, env_vars, clear=True):
+        config = McpClientConfig(_env_file=None)
+
+        assert len(config.servers) == 2
+
+        # Check apify headers
+        assert config.servers["apify"].headers == {"Authorization": "Bearer test-token"}
+
+        # Check tavily headers (multiple)
+        assert config.servers["tavily"].headers == {
+            "X-API-Key": "tavily-key",
+            "X-Custom": "value",
+        }
+
+
+def test_json_format_without_headers_defaults_to_none(clean_env):
+    """McpClientConfig defaults headers to None when not specified."""
+    json_config = '{"simple": {"url": "http://localhost:8080"}}'
+    env_vars = {"MCP_SERVERS": json_config}
+
+    with patch.dict(os.environ, env_vars, clear=True):
+        config = McpClientConfig(_env_file=None)
+
+        assert config.servers["simple"].headers is None
+
+
+# --- Nested Format with Headers Tests ---
+
+
+def test_nested_format_with_headers(clean_env):
+    """McpClientConfig parses headers from nested env vars.
+
+    Note: pydantic-settings lowercases env var keys, so AUTHORIZATION becomes authorization.
+    HTTP headers are case-insensitive per RFC 7230, so this is acceptable.
+    """
+    env_vars = {
+        "MCP_SERVERS__APIFY__URL": "https://mcp.apify.com/sse",
+        "MCP_SERVERS__APIFY__TRANSPORT": "sse",
+        "MCP_SERVERS__APIFY__HEADERS__AUTHORIZATION": "Bearer test-token",
+    }
+
+    with patch.dict(os.environ, env_vars, clear=True):
+        config = McpClientConfig(_env_file=None)
+
+        assert "apify" in config.servers
+        assert config.servers["apify"].url == "https://mcp.apify.com/sse"
+        assert config.servers["apify"].transport == "sse"
+        # pydantic-settings lowercases keys; HTTP headers are case-insensitive anyway
+        assert config.servers["apify"].headers == {"authorization": "Bearer test-token"}

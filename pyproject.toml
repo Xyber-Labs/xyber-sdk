@@ -1,6 +1,6 @@
 [project]
 name = "xyber-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared utilities for LLM initialization, MCP server connections, and guardrails"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -9,11 +9,10 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "httpx>=0.27.0",
     "langchain-core>=0.3.29",
-    "langchain-together>=0.3.0",
     "langchain-google-genai>=2.1.2",
     "langgraph>=0.4",
     "langchain-mcp-adapters>=0.1.0,<0.2.0",
-    "guardrails-ai>=0.6.6",
+    "guardrails-ai>=0.6.6,<0.7.0",
 ]
 
 [project.optional-dependencies]

@@ -33,6 +33,7 @@ class McpServerConfig(BaseModel):
 
     url: str
     transport: Literal["sse", "stdio", "streamable_http"] = "streamable_http"
+    headers: dict[str, str] | None = None
 
 
 class McpClientConfig(BaseSettings):

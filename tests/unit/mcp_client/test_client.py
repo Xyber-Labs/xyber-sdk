@@ -884,3 +884,71 @@ def test_client_factory_passed_to_http_transports():
         # stdio transport should NOT have the factory
         assert "stdio_server" in server_configs
         assert "httpx_client_factory" not in server_configs["stdio_server"]
+
+
+def test_headers_passed_to_http_transports():
+    """Headers are passed to HTTP-based transports but not stdio."""
+    config = McpClientConfig(
+        servers={
+            "apify": McpServerConfig(
+                url="https://mcp.apify.com/sse",
+                transport="sse",
+                headers={"Authorization": "Bearer apify-token"},
+            ),
+            "tavily": McpServerConfig(
+                url="https://tavily.com/mcp",
+                transport="streamable_http",
+                headers={"X-API-Key": "tavily-key"},
+            ),
+            "local": McpServerConfig(
+                url="stdio://test",
+                transport="stdio",
+                headers={"Should": "Be-Ignored"},  # headers on stdio should be ignored
+            ),
+        },
+        _env_file=None,
+    )
+
+    with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_adapter_cls:
+        McpClient.from_config(config)
+
+        mock_adapter_cls.assert_called_once()
+        args, _ = mock_adapter_cls.call_args
+        server_configs = args[0]
+
+        # SSE transport should have headers
+        assert "apify" in server_configs
+        assert server_configs["apify"]["headers"] == {"Authorization": "Bearer apify-token"}
+
+        # streamable_http transport should have headers
+        assert "tavily" in server_configs
+        assert server_configs["tavily"]["headers"] == {"X-API-Key": "tavily-key"}
+
+        # stdio transport should NOT have headers
+        assert "local" in server_configs
+        assert "headers" not in server_configs["local"]
+
+
+def test_headers_not_passed_when_none():
+    """Headers key is not added when headers is None."""
+    config = McpClientConfig(
+        servers={
+            "no_headers": McpServerConfig(
+                url="https://example.com/mcp",
+                transport="sse",
+                headers=None,
+            ),
+        },
+        _env_file=None,
+    )
+
+    with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_adapter_cls:
+        McpClient.from_config(config)
+
+        mock_adapter_cls.assert_called_once()
+        args, _ = mock_adapter_cls.call_args
+        server_configs = args[0]
+
+        # Headers key should not exist when None
+        assert "no_headers" in server_configs
+        assert "headers" not in server_configs["no_headers"]

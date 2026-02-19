@@ -62,6 +62,8 @@ class McpClient:
                 "url": server_config.url,
                 "transport": server_config.transport,
             }
+            if server_config.headers and server_config.transport in ("sse", "streamable_http"):
+                server_configs[server_name]["headers"] = server_config.headers
             if self.httpx_client_factory and server_config.transport in ("sse", "streamable_http"):
                 server_configs[server_name]["httpx_client_factory"] = self.httpx_client_factory
 

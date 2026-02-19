@@ -1,8 +1,8 @@
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_together import ChatTogether
 from pydantic import BaseModel, Field
 
 from guardrails.types.on_fail import OnFailAction
@@ -51,7 +51,7 @@ class LLMValidator(Validator):
 
     def __init__(
         self,
-        llm: ChatTogether,
+        llm: BaseChatModel,
         system_prompt: str,
         on_fail: str | None = OnFailAction.EXCEPTION,
         **kwargs,

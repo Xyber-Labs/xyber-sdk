@@ -10,9 +10,11 @@ Connect to Model Context Protocol (MCP) servers and access their tools.
 
 ```python
 from xyber_sdk.mcp_client import (
+    # Client
     McpClient,
     get_mcp_client,
     get_mcp_client_config,
+    # Configuration
     McpClientConfig,
     McpServerConfig,
     # Exceptions
@@ -29,6 +31,21 @@ from xyber_sdk.mcp_client import (
 **JSON format (recommended):**
 ```bash
 MCP_SERVERS='{"web_search": {"url": "http://localhost:8080/sse", "transport": "sse"}}'
+```
+
+**With authentication headers:**
+```bash
+MCP_SERVERS='{
+  "apify": {
+    "url": "https://mcp.apify.com/sse?actors=apidojo/twitter-scraper-lite",
+    "transport": "sse",
+    "headers": {"Authorization": "Bearer YOUR_APIFY_TOKEN"}
+  },
+  "tavily": {
+    "url": "https://mcp.tavily.com/mcp",
+    "headers": {"X-API-Key": "YOUR_TAVILY_KEY"}
+  }
+}'
 ```
 
 **Nested format:**
@@ -50,9 +67,10 @@ config = McpClientConfig(
             url="http://localhost:8080/sse",
             transport="sse"
         ),
-        "database": McpServerConfig(
-            url="http://localhost:9000/mcp",
-            transport="streamable_http"
+        "apify": McpServerConfig(
+            url="https://mcp.apify.com/sse?actors=apidojo/twitter-scraper-lite",
+            transport="sse",
+            headers={"Authorization": "Bearer YOUR_TOKEN"}
         ),
     }
 )
@@ -61,11 +79,11 @@ client = McpClient.from_config(config)
 
 ### Transport Types
 
-| Transport | Use Case |
-|-----------|----------|
-| `sse` | Server-Sent Events (most common) |
-| `streamable_http` | HTTP with streaming support |
-| `stdio` | Local process communication |
+| Transport | Use Case | Headers Support |
+|-----------|----------|-----------------|
+| `sse` | Server-Sent Events (most common) | ✅ Yes |
+| `streamable_http` | HTTP with streaming support | ✅ Yes |
+| `stdio` | Local process communication | ❌ No |
 
 ## Usage Scenarios
 
