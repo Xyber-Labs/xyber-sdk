@@ -952,3 +952,121 @@ def test_headers_not_passed_when_none():
         # Headers key should not exist when None
         assert "no_headers" in server_configs
         assert "headers" not in server_configs["no_headers"]
+
+
+# --- Server Prefix Tests ---
+
+
+class TestServerPrefixBehavior:
+    """Tests for get_all_tools server prefix functionality."""
+
+    @pytest.fixture
+    def mock_unprefixed_tool(self):
+        """Mock tool without server prefix, with model_copy support."""
+        tool = MagicMock(spec=StructuredTool)
+        tool.name = "search_topic"
+        prefixed_copy = MagicMock(spec=StructuredTool)
+        tool.model_copy = MagicMock(return_value=prefixed_copy)
+        tool._prefixed_copy = prefixed_copy  # Store reference for assertions
+        return tool
+
+    @pytest.fixture
+    def mock_prefixed_tool(self):
+        """Mock tool that already has server prefix."""
+        tool = MagicMock(spec=StructuredTool)
+        tool.name = "tavily_search"
+        return tool
+
+    @pytest.mark.asyncio
+    async def test_adds_prefix_to_unprefixed_tools(self, single_server_config, mock_unprefixed_tool):
+        """get_all_tools adds server name prefix to tools that don't have it."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+            mock_adapter.get_tools = AsyncMock(return_value=[mock_unprefixed_tool])
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=single_server_config)
+            all_tools = await client.get_all_tools()
+
+            assert len(all_tools) == 1
+            mock_unprefixed_tool.model_copy.assert_called_once()
+            assert mock_unprefixed_tool._prefixed_copy.name == "tavily_search_topic"
+
+    @pytest.mark.asyncio
+    async def test_preserves_already_prefixed_tools(self, single_server_config, mock_prefixed_tool):
+        """get_all_tools does not modify tools that already have the correct prefix."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+            mock_adapter.get_tools = AsyncMock(return_value=[mock_prefixed_tool])
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=single_server_config)
+            all_tools = await client.get_all_tools()
+
+            assert len(all_tools) == 1
+            assert all_tools[0] is mock_prefixed_tool  # Same object, not copied
+            assert all_tools[0].name == "tavily_search"
+
+    @pytest.mark.asyncio
+    async def test_prefixes_tools_from_multiple_servers(self, sample_config):
+        """get_all_tools correctly prefixes tools from multiple servers."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+
+            tavily_tool = MagicMock(spec=StructuredTool)
+            tavily_tool.name = "search"
+            tavily_copy = MagicMock(spec=StructuredTool)
+            tavily_tool.model_copy = MagicMock(return_value=tavily_copy)
+
+            qdrant_tool = MagicMock(spec=StructuredTool)
+            qdrant_tool.name = "query"
+            qdrant_copy = MagicMock(spec=StructuredTool)
+            qdrant_tool.model_copy = MagicMock(return_value=qdrant_copy)
+
+            local_tool = MagicMock(spec=StructuredTool)
+            local_tool.name = "local_execute"  # Already has local_ prefix
+
+            async def get_tools_side_effect(server_name):
+                return {"tavily": [tavily_tool], "qdrant": [qdrant_tool], "local": [local_tool]}.get(
+                    server_name, []
+                )
+
+            mock_adapter.get_tools = AsyncMock(side_effect=get_tools_side_effect)
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=sample_config)
+            all_tools = await client.get_all_tools()
+
+            assert len(all_tools) == 3
+            assert tavily_copy.name == "tavily_search"
+            assert qdrant_copy.name == "qdrant_query"
+            assert local_tool in all_tools
+
+    @pytest.mark.asyncio
+    async def test_handles_mixed_prefixed_and_unprefixed(self):
+        """get_all_tools handles mix of prefixed and unprefixed tools from same server."""
+        config = McpClientConfig(
+            servers={"twitter": McpServerConfig(url="http://localhost:8080", transport="sse")},
+            _env_file=None,
+        )
+
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+
+            prefixed_tool = MagicMock(spec=StructuredTool)
+            prefixed_tool.name = "twitter_apify_get_pricing"
+
+            unprefixed_tool = MagicMock(spec=StructuredTool)
+            unprefixed_tool.name = "search_topic"
+            unprefixed_copy = MagicMock(spec=StructuredTool)
+            unprefixed_tool.model_copy = MagicMock(return_value=unprefixed_copy)
+
+            mock_adapter.get_tools = AsyncMock(return_value=[prefixed_tool, unprefixed_tool])
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=config)
+            all_tools = await client.get_all_tools()
+
+            assert len(all_tools) == 2
+            assert prefixed_tool in all_tools
+            assert unprefixed_copy.name == "twitter_search_topic"

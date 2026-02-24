@@ -160,9 +160,12 @@ class McpClient:
         return self.tools[server_name][tool_name]
 
     async def get_all_tools(self) -> list[StructuredTool]:
-        """Get all tools from all connected MCP servers.
+        """Get all tools from all connected MCP servers with server name prefixes.
 
         This method lazily loads tools from servers that haven't been connected to yet.
+        Tool names are prefixed with the server name to avoid collisions (e.g., 'search_topic'
+        from 'twitter' server becomes 'twitter_search_topic'). Tools that already have the
+        correct prefix are left unchanged.
 
         Returns:
             list[StructuredTool]: A list of all available tools from all servers.
@@ -171,9 +174,16 @@ class McpClient:
             if not self.tools[server_name]:
                 await self._load_tools_from_server(server_name)
 
-        return [
-            tool for server_name in self.tools.keys() for tool in self.tools[server_name].values()
-        ]
+        all_tools = []
+        for server_name, tools_dict in self.tools.items():
+            for tool in tools_dict.values():
+                if not tool.name.startswith(f"{server_name}_"):
+                    prefixed_tool = tool.model_copy()
+                    prefixed_tool.name = f"{server_name}_{tool.name}"
+                    all_tools.append(prefixed_tool)
+                else:
+                    all_tools.append(tool)
+        return all_tools
 
     async def get_all_tools_from_server(self, server_name: str) -> list[StructuredTool]:
         """Get all tools from a specific MCP server.
