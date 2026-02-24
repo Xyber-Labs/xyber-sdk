@@ -1070,3 +1070,156 @@ class TestServerPrefixBehavior:
             assert len(all_tools) == 2
             assert prefixed_tool in all_tools
             assert unprefixed_copy.name == "twitter_search_topic"
+
+
+# --- Parallel Loading Tests ---
+
+
+class TestParallelLoading:
+    """Tests for get_all_tools parallel loading behavior."""
+
+    @pytest.fixture
+    def three_server_config(self):
+        """Create a config with three servers for parallel testing."""
+        return McpClientConfig(
+            servers={
+                "server_a": McpServerConfig(url="http://localhost:8080", transport="sse"),
+                "server_b": McpServerConfig(url="http://localhost:8081", transport="sse"),
+                "server_c": McpServerConfig(url="http://localhost:8082", transport="sse"),
+            },
+            _env_file=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_loads_in_parallel(self, three_server_config):
+        """get_all_tools loads tools from multiple servers in parallel, not sequentially."""
+        import asyncio
+        import time
+
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+            load_times = []
+
+            async def slow_get_tools(server_name):
+                """Simulate slow server response (100ms each)."""
+                start = time.monotonic()
+                await asyncio.sleep(0.1)  # 100ms delay
+                load_times.append((server_name, time.monotonic() - start))
+                tool = MagicMock(spec=StructuredTool)
+                tool.name = f"{server_name}_tool"
+                return [tool]
+
+            mock_adapter.get_tools = AsyncMock(side_effect=slow_get_tools)
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=three_server_config)
+
+            start_time = time.monotonic()
+            all_tools = await client.get_all_tools()
+            total_time = time.monotonic() - start_time
+
+            # 3 servers × 100ms each = 300ms sequential, ~100ms parallel
+            # Allow some overhead, but should be much less than 300ms
+            assert total_time < 0.25, f"Took {total_time:.3f}s - loading appears sequential, not parallel"
+            assert len(all_tools) == 3
+            print(f"\nParallel loading: 3 servers loaded in {total_time:.3f}s (expected ~0.1s)")
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_continues_on_server_failure(self, three_server_config):
+        """get_all_tools continues loading other servers when one fails."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+
+            tool_a = MagicMock(spec=StructuredTool)
+            tool_a.name = "server_a_tool"
+            tool_c = MagicMock(spec=StructuredTool)
+            tool_c.name = "server_c_tool"
+
+            async def get_tools_with_failure(server_name):
+                if server_name == "server_b":
+                    raise ConnectionError("Server B is down")
+                return [{"server_a": tool_a, "server_c": tool_c}[server_name]]
+
+            mock_adapter.get_tools = AsyncMock(side_effect=get_tools_with_failure)
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=three_server_config)
+
+            # Should NOT raise - failures are logged but don't crash
+            all_tools = await client.get_all_tools()
+
+            # Should have tools from server_a and server_c (server_b failed)
+            assert len(all_tools) == 2
+            tool_names = [t.name for t in all_tools]
+            assert "server_a_tool" in tool_names
+            assert "server_c_tool" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_logs_failures(self, three_server_config, caplog):
+        """get_all_tools logs errors for failed servers."""
+        import logging
+
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+
+            tool = MagicMock(spec=StructuredTool)
+            tool.name = "working_tool"
+
+            async def get_tools_with_failure(server_name):
+                if server_name == "server_b":
+                    raise ConnectionError("Connection refused")
+                return [tool]
+
+            mock_adapter.get_tools = AsyncMock(side_effect=get_tools_with_failure)
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=three_server_config)
+
+            with caplog.at_level(logging.ERROR):
+                await client.get_all_tools()
+
+            # Should log the error for server_b
+            assert any("server_b" in record.message for record in caplog.records)
+            assert any("Connection refused" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_all_servers_fail(self, three_server_config):
+        """get_all_tools returns empty list when all servers fail."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+            mock_adapter.get_tools = AsyncMock(side_effect=ConnectionError("All servers down"))
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=three_server_config)
+
+            # Should NOT raise - returns empty list
+            all_tools = await client.get_all_tools()
+
+            assert all_tools == []
+
+    @pytest.mark.asyncio
+    async def test_get_all_tools_only_loads_empty_servers(self, three_server_config):
+        """get_all_tools only loads servers that haven't been loaded yet."""
+        with patch("xyber_sdk.mcp_client.client.MultiServerMCPClient") as mock_cls:
+            mock_adapter = AsyncMock()
+
+            tool = MagicMock(spec=StructuredTool)
+            tool.name = "new_tool"
+            mock_adapter.get_tools = AsyncMock(return_value=[tool])
+            mock_cls.return_value = mock_adapter
+
+            client = McpClient(config=three_server_config)
+
+            # Pre-populate server_a cache
+            cached_tool = MagicMock(spec=StructuredTool)
+            cached_tool.name = "server_a_cached"
+            client.tools["server_a"] = {"cached": cached_tool}
+
+            await client.get_all_tools()
+
+            # Should only load server_b and server_c (2 calls)
+            assert mock_adapter.get_tools.call_count == 2
+            called_servers = [call.kwargs["server_name"] for call in mock_adapter.get_tools.call_args_list]
+            assert "server_a" not in called_servers
+            assert "server_b" in called_servers
+            assert "server_c" in called_servers

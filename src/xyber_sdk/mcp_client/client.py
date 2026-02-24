@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Callable
 
@@ -170,9 +171,23 @@ class McpClient:
         Returns:
             list[StructuredTool]: A list of all available tools from all servers.
         """
-        for server_name in self.config.servers.keys():
-            if not self.tools[server_name]:
-                await self._load_tools_from_server(server_name)
+        # Gather servers that need loading
+        servers_to_load = [
+            server_name for server_name in self.config.servers.keys()
+            if not self.tools[server_name]
+        ]
+
+        if servers_to_load:
+            logger.debug(f"Loading tools from {len(servers_to_load)} servers in parallel: {servers_to_load}")
+            # Load all servers in parallel
+            results = await asyncio.gather(
+                *[self._load_tools_from_server(server_name) for server_name in servers_to_load],
+                return_exceptions=True
+            )
+            # Log any failures
+            for server_name, result in zip(servers_to_load, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to load tools from {server_name}: {result}")
 
         all_tools = []
         for server_name, tools_dict in self.tools.items():
